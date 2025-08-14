@@ -1,16 +1,12 @@
 import cv2
 import numpy as np
 import time
-import glob
-import os
 import pygame
 
 # ----------------------------
-# CONFIG / DEPENDENCIAS
+# CONFIG
 # ----------------------------
-# Requiere: pip install opencv-python numpy pygame pillow
-# Coloca tu archivo mp3 en la ruta SOUND_FILE (o ajusta la ruta)
-SOUND_FILE = r"assets/beep2.mp3"
+SOUND_FILE = r"assets/beep2.mp3"  # Ajusta la ruta a tu mp3
 
 # Inicializar pygame mixer (sonido)
 try:
@@ -21,7 +17,7 @@ except Exception as e:
     # Seguimos sin sonido si falla.
 
 # Tamaño ventana / semáforo
-width, height = 200, 550  # aumenté altura para botón
+width, height = 200, 550
 center_x = width // 2
 positions = (100, 250, 400)  # y positions para luces (arriba, medio, abajo)
 radius = 40
@@ -34,8 +30,8 @@ COLOR_YELLOW = (0, 255, 255)
 COLOR_GREEN = (0, 255, 0)
 COLOR_GRAY = (80, 80, 80)
 TEXT_COLOR = (255, 255, 255)
-BUTTON_COLOR = (0, 180, 255)       # botón normal
-BUTTON_PRESSED_COLOR = (100, 100, 100)  # presionado (oscuro)
+BUTTON_COLOR = (0, 180, 255)
+BUTTON_PRESSED_COLOR = (100, 100, 100)
 
 # Secuencia (nombre, duración por defecto)
 sequence = [("green", 30), ("yellow", 5), ("red", 30)]
@@ -46,93 +42,31 @@ idx = 0
 state_name, state_duration = sequence[idx]
 state_start = time.time()
 
-# Mostrar info por tecla 'i' (por defecto False)
+# Mostrar info por tecla 'i'
 show_info = False
 
-# Próxima roja especial (None o número de segundos)
+# Próxima roja especial
 next_red_duration = None
 
-# Estado del botón S (presionado)
+# Estado del botón S
 s_pressed = False
 prev_s_pressed = False
 
-# Parámetros de braille / puntos
-DOT_RADIUS = 5
-# Buscamos un archivo cuyo nombre empiece por 'braille_half' en el directorio actual o 'assets'
-braille_candidates = glob.glob("braille_half*") + glob.glob(os.path.join("assets", "braille_half*"))
-braille_image_path = braille_candidates[0] if braille_candidates else None
+# Braille: mapping de letras (Grade-1 uncontracted) usando puntos 1..6
+# Representación en sets de números {dots}
+BRAILLE_MAP = {
+    "P": {1,2,3,4},
+    "U": {1,3,6},
+    "S": {2,3,4},
+    "H": {1,2,5}
+}
 
-def load_or_generate_braille_norm_centroids(path):
-    """
-    Si existe una imagen 'path', extrae los "puntos" (blobs) y devuelve
-    una lista de centroides normalizados (nx, ny) en rango [0,1].
-    Si no hay imagen o no se detectan puntos, devuelve patrón 2x3 centrado.
-    """
-    if path is None:
-        # fallback grid 2x3
-        cols = 2; rows = 3
-        pts = []
-        for r in range(rows):
-            for c in range(cols):
-                nx = (c + 0.5) / cols
-                ny = (r + 0.5) / rows
-                pts.append((nx, ny))
-        return pts
+# El texto que queremos escribir en braille (debe corresponder a BRAILLE_MAP keys)
+BRAILLE_TEXT = "PUSH"
 
-    import cv2 as _cv
-    import numpy as _np
-    try:
-        img = _cv.imread(path, _cv.IMREAD_UNCHANGED)
-        if img is None:
-            raise ValueError("No se pudo leer imagen")
-        # Convertir a gris robustamente
-        if img.ndim == 2:
-            gray = img.copy()
-        elif img.shape[2] == 4:
-            gray = _cv.cvtColor(img[:,:,:3], _cv.COLOR_BGR2GRAY)
-        else:
-            gray = _cv.cvtColor(img, _cv.COLOR_BGR2GRAY)
-
-        blur = _cv.GaussianBlur(gray, (5,5), 0)
-        _, thresh = _cv.threshold(blur, 0, 255, _cv.THRESH_BINARY + _cv.THRESH_OTSU)
-        # asegurar que los puntos quedan blancos para detectar contornos
-        if _np.mean(blur) > 127:
-            thresh = 255 - thresh
-
-        contours, _ = _cv.findContours(thresh, _cv.RETR_EXTERNAL, _cv.CHAIN_APPROX_SIMPLE)
-        centroids = []
-        for cnt in contours:
-            area = _cv.contourArea(cnt)
-            if area < 8:
-                continue
-            M = _cv.moments(cnt)
-            if M["m00"] == 0:
-                continue
-            cx = M["m10"] / M["m00"]
-            cy = M["m01"] / M["m00"]
-            centroids.append((cx, cy))
-
-        # ordenar y normalizar
-        if len(centroids) == 0:
-            raise RuntimeError("No se detectaron contornos válidos")
-        centroids = sorted(centroids, key=lambda c: (c[1], c[0]))
-        h, w = gray.shape
-        norm = [ (cx / w, cy / h) for (cx, cy) in centroids ]
-        return norm
-    except Exception as e:
-        # fallback 2x3
-        print("Aviso: no se pudieron extraer puntos braille de la imagen:", e)
-        cols = 2; rows = 3
-        pts = []
-        for r in range(rows):
-            for c in range(cols):
-                nx = (c + 0.5) / cols
-                ny = (r + 0.5) / rows
-                pts.append((nx, ny))
-        return pts
-
-# Cargar o generar puntos normalizados
-norm_centroids = load_or_generate_braille_norm_centroids(braille_image_path)
+# Parámetros visuales de braille
+DOT_RADIUS = 2
+CELL_SPACING = 8  # espacio entre celdas de braille
 
 # ----------------------------
 # DIBUJO Y LÓGICA
@@ -143,7 +77,7 @@ cv2.resizeWindow("Semaforo", width*2, height*2)
 def draw_frame(active, blink_on, show_info_flag, remaining_seconds, s_button_state):
     """
     Devuelve la imagen (numpy array) del semáforo con botón.
-    s_button_state: bool → si True, dibuja el botón 'presionado' (oscurecido y hundido)
+    Dibuja las celdas braille que representan la palabra PUSH arriba de la palabra.
     """
     img = np.full((height, width, 3), bg_color, dtype=np.uint8)
 
@@ -167,13 +101,12 @@ def draw_frame(active, blink_on, show_info_flag, remaining_seconds, s_button_sta
     btn_height = 60
     btn_x1 = 60
     btn_x2 = width - 60
-    # hundimiento: desplazamiento vertical mientras presionado
     press_offset = 4 if s_button_state else 0
     btn_y1 = btn_top + press_offset
     btn_y2 = btn_top + btn_height + press_offset
 
     btn_color = BUTTON_PRESSED_COLOR if s_button_state else BUTTON_COLOR
-    cv2.rectangle(img, (btn_x1, btn_y1), (btn_x2, btn_y2), btn_color, -1, cv2.LINE_AA)
+    cv2.rectangle(img, (btn_x1, btn_y1 - 5), (btn_x2, btn_y2), btn_color, -1, cv2.LINE_AA)
 
     # Draw "PUSH" centrado (OpenCV)
     text = "PUSH"
@@ -185,21 +118,55 @@ def draw_frame(active, blink_on, show_info_flag, remaining_seconds, s_button_sta
     text_y = btn_y1 + (btn_height // 2) + th // 2 - 2 + press_offset
     cv2.putText(img, text, (text_x, text_y), font, scale, (0,0,0), thickness, cv2.LINE_AA)
 
-    # Áreas para puntos braille (arriba y abajo de la palabra PUSH)
-    pad_x = 10
+    # Área para dibujar las celdas braille ARRIBA de PUSH (dentro del botón)
+    pad_x = 8
     upper_area = (btn_x1 + pad_x, btn_y1 + 6, btn_x2 - pad_x, text_y - 6)
-    lower_area = (btn_x1 + pad_x, text_y + 6, btn_x2 - pad_x, btn_y2 - 6)
+    ua_x1, ua_y1, ua_x2, ua_y2 = upper_area
+    ua_w = ua_x2 - ua_x1
+    ua_h = ua_y2 - ua_y1
 
-    # Dibujar puntos normalizados y su versión volteada (180°) abajo
-    for (nx, ny) in norm_centroids:
-        ux = int(upper_area[0] + nx * (upper_area[2] - upper_area[0]))
-        uy = int(upper_area[1] + ny * (upper_area[3] - upper_area[1]))
-        cv2.circle(img, (ux, uy), DOT_RADIUS, (0,0,0), -1)
+    # Cantidad de celdas = numero de caracteres en BRAILLE_TEXT
+    n_cells = len(BRAILLE_TEXT)
+    # ancho disponible por celda considerando espacios
+    total_spacing = CELL_SPACING * (n_cells - 1)
+    cell_w = (ua_w - total_spacing) / n_cells
+    cell_h = ua_h  # usar toda la altura del área
 
-        # Volteado 180°: invertir ambas coordenadas (1-nx, 1-ny)
-        fx = int(lower_area[0] + (1 - nx) * (lower_area[2] - lower_area[0]))
-        fy = int(lower_area[1] + (1 - ny) * (lower_area[3] - lower_area[1]))
-        cv2.circle(img, (fx, fy), DOT_RADIUS, (0,0,0), -1)
+    # Para cada celda (letra), calcular coordenadas de los 6 puntos
+    for i, ch in enumerate(BRAILLE_TEXT):
+        ch = ch.upper()
+        cell_x1 = int(ua_x1 + i * (cell_w + CELL_SPACING))
+        cell_y1 = int(ua_y1)
+        cell_x2 = int(cell_x1 + cell_w)
+        cell_y2 = int(cell_y1 + cell_h)
+
+        # Posiciones relativas para los 6 puntos dentro de la celda:
+        # Columna izquierda (col=0), columna derecha (col=1)
+        # Filas: 3 (top, mid, bottom)
+        # calculamos coordenadas concretas:
+        left_x = int(cell_x1 + 0.25 * (cell_x2 - cell_x1))
+        right_x = int(cell_x1 + 0.75 * (cell_x2 - cell_x1))
+        top_y = int(cell_y1 + 0.18 * (cell_y2 - cell_y1))
+        mid_y = int(cell_y1 + 0.5 * (cell_y2 - cell_y1))
+        bot_y = int(cell_y1 + 0.82 * (cell_y2 - cell_y1))
+
+        # mapa de índices a coords
+        coords = {
+            1: (left_x, top_y-8),
+            2: (left_x, mid_y-8),
+            3: (left_x, bot_y-8),
+            4: (right_x, top_y-8),
+            5: (right_x, mid_y-8),
+            6: (right_x, bot_y-8)
+        }
+
+        dots = BRAILLE_MAP.get(ch, set())
+        for d in range(1,7):
+            if d in dots:
+                cv2.circle(img, coords[d], DOT_RADIUS, (0,0,0), -1)
+            else:
+                # opcional: dibujar puntos no-relieve como círculos pequeños grises (comentar si no se desea)
+                pass
 
     # Info texto opcional (estado + remaining)
     if show_info_flag:
@@ -213,7 +180,6 @@ def draw_frame(active, blink_on, show_info_flag, remaining_seconds, s_button_sta
 def play_sound_on_release():
     """Reproducir sonido con pygame (no bloqueante)."""
     try:
-        # Si la música está sonando, detenerla y volver a reproducir
         if pygame.mixer.get_init() is None:
             print("pygame mixer no inicializado; no se reproduce sonido.")
             return
@@ -226,8 +192,6 @@ def play_sound_on_release():
 # Bucle principal
 # ----------------------------
 while True:
-    img = np.full((height, width, 3), bg_color, dtype=np.uint8)
-
     now = time.time()
     # Cambio de fase si se agotó el tiempo
     if now - state_start >= state_duration:
@@ -251,7 +215,7 @@ while True:
     else:
         blink_on = (state_name == "green")
 
-    # Dibuja frame
+    # Dibuja frame y muestra
     frame = draw_frame(state_name, blink_on, show_info, remaining, s_pressed)
     cv2.imshow("Semaforo", frame)
 
@@ -260,8 +224,6 @@ while True:
 
     # Actualizar estados de tecla S
     prev_s_pressed = s_pressed
-    # Nota: cv2.waitKey detecta tecla solo cuando ocurre dentro del intervalo de espera.
-    # Esto funciona razonablemente para uso interactivo simple.
     s_pressed = (key == ord('s') or key == ord('S'))
 
     # Eventos globales
@@ -272,10 +234,8 @@ while True:
 
     # Comportamiento al mantener presionada S
     if s_pressed:
-        # Si estamos en verde y faltan >5s, acortar a 5s restantes (sin cambiar duración base)
         if state_name == "green" and remaining > 5:
             state_start = now - (state_duration - 5)
-        # Si no estamos en rojo, programar próxima roja a 60s
         if state_name != "red":
             next_red_duration = 60
 
@@ -285,4 +245,7 @@ while True:
 
 # Cleanup
 cv2.destroyAllWindows()
-pygame.mixer.quit()
+try:
+    pygame.mixer.quit()
+except Exception:
+    pass
