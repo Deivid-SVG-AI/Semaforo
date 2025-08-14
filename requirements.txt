@@ -1,0 +1,10 @@
+# Core
+numpy>=1.24
+opencv-python>=4.7
+
+# UI / sound / images
+pygame>=2.1
+Pillow>=9.0
+
+# Optional: simple cross-platform sound fallback (pin a known stable release)
+playsound==1.2.2
