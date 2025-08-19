@@ -10,7 +10,7 @@ Además incluye comportamiento interactivo por teclado y sonido cuando se suelta
 
 ## Funcionalidades principales
 
-* Semáforo con ciclo: **verde 30s → amarillo 5s → rojo 30s**.
+* Semáforo con ciclo: **verde 30s → amarillo 4s → rojo 45s**.
 * En los últimos **5 segundos** de la fase verde, la luz verde **parpadea** (0.5 s on / 0.5 s off).
 * Teclas interactivas:
 
