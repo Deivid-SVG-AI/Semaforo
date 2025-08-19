@@ -65,3 +65,6 @@ python semaforo_braille.py
 La ventana mostrará el semáforo y el botón interactivo.
 
 ---
+
+Diagrama de flujo:
+![Diagrama de Flujo](assets/diagrama_flujo_semaforo.png)

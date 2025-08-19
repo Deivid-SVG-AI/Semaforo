@@ -34,7 +34,7 @@ BUTTON_COLOR = (0, 180, 255)
 BUTTON_PRESSED_COLOR = (100, 100, 100)
 
 # Secuencia (nombre, duración por defecto)
-sequence = [("green", 30), ("yellow", 5), ("red", 30)]
+sequence = [("green", 30), ("yellow", 4), ("red", 45)]
 seq_len = len(sequence)
 
 # Estado inicial
